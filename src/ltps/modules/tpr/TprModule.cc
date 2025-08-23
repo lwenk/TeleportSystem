@@ -52,6 +52,12 @@ bool TprModule::enable() {
     mListeners.emplace_back(bus.emplaceListener<PrepareCreateTprTaskEvent>([this](PrepareCreateTprTaskEvent& ev) {
         auto& player = ev.getPlayer();
 
+        if (getConfig().modules.tpr.disallowedDimensions.contains(player.getDimensionId())) {
+            mc_utils::sendText<mc_utils::Error>(player, "此功能在当前维度不可用"_trl(player.getLocaleCode()));
+            ev.cancel();
+            return;
+        }
+
         auto& cool = getCooldown();
         if (cool.isCooldown(player.getRealName())) {
             mc_utils::sendText<mc_utils::Error>(
