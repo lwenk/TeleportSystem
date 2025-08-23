@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2025-08-23
+
+### 🐛 问题修复
+
+- 修复 `tpr.enable` 配置无效
+- 修复更新家园坐标时未同步维度
+- 修复随机传送禁用维度无效
+
 ## [0.12.0] - 2025-7-16
 
 ### 🧹 其他改动
