@@ -316,6 +316,7 @@ bool HomeModule::enable() {
             }
             if (newPos.has_value()) {
                 home->updatePosition(*newPos);
+                home->dimid = player.getDimensionId();
             }
 
             if (auto res = storage->updateHome(realName, name, *home)) {
