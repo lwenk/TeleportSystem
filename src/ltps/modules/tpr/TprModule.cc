@@ -16,7 +16,7 @@ TprModule::TprModule() = default;
 
 std::vector<std::string> TprModule::getDependencies() const { return {}; }
 
-bool TprModule::isLoadable() const { return getConfig().modules.tpa.enable; }
+bool TprModule::isLoadable() const { return getConfig().modules.tpr.enable; }
 
 bool TprModule::init() {
     if (!mSafeTeleport) {
