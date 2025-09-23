@@ -95,7 +95,7 @@ bool isSneaking(Player& player) {
 Vec2 getRotation(Actor& actor) { return actor.mBuiltInComponents->mActorRotationComponent->mRotationDegree; }
 
 bool canDestroyBlock(ItemStackBase const& item, Block const& block) {
-    auto legacy = &block.getLegacyBlock();
+    auto legacy = &block.getBlockType();
     return std::find(item.mCanDestroy.begin(), item.mCanDestroy.end(), legacy) != item.mCanDestroy.end();
 }
 
