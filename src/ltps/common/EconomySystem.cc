@@ -1,11 +1,22 @@
 #include "ltps/common/EconomySystem.h"
+#include "ll/api/base/StdInt.h"
 #include "ll/api/i18n/I18n.h"
 #include "ll/api/service/Bedrock.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "ltps/TeleportSystem.h"
 #include "ltps/base/Config.h"
 #include "ltps/utils/JsonUtls.h"
-#include "mc/world/actor/player/Player.h"
+#include "mc/platform/UUID.h"
+#include <mc/world/actor/player/Player.h>
+#include <mc/world/level/Level.h>
+#include <mc/world/scores/Objective.h>
+#include <mc/world/scores/PlayerScoreSetFunction.h>
+#include <mc/world/scores/ScoreInfo.h>
+#include <mc/world/scores/Scoreboard.h>
+#include <mc/world/scores/ScoreboardId.h>
+#include <mc/world/scores/ScoreboardOperationResult.h>
+
+
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -32,7 +43,9 @@ std::shared_ptr<EconomySystem> EconomySystemManager::createEconomySystem() const
         return std::make_shared<internals::LegacyMoneyEconomySystem>();
     }
     case ltps::EconomySystem::Kit::ScoreBoard: {
-        throw std::runtime_error("ScoreBoard Economy System not implemented yet.");
+        // throw std::runtime_error("ScoreBoard Economy System not implemented yet.");
+        TeleportSystem::getInstance().getSelf().getLogger().debug("EconomySystem using ScoreBoard EconomySystem.");
+        return std::make_shared<internals::ScoreBoardEconomySystem>();
     }
     }
 
@@ -268,6 +281,163 @@ bool LegacyMoneyEconomySystem::transfer(mce::UUID const& from, mce::UUID const& 
 
 } // namespace internals
 
+namespace internals {
+ScoreBoardEconomySystem::ScoreBoardEconomySystem() : EconomySystem() {}
+
+llong ScoreBoardEconomySystem::get(Player& player) const {
+    auto& cfg = getConfig();
+
+    Scoreboard& scoreboard = ll::service::getLevel()->getScoreboard();
+    Objective*  obj        = scoreboard.getObjective(cfg.economySystem.scoreboardName);
+    if (!obj) {
+        return 0;
+    }
+
+    ScoreboardId const& id = scoreboard.getScoreboardId(player);
+    if (id.mRawID == ScoreboardId::INVALID().mRawID) {
+        scoreboard.createScoreboardId(player);
+    }
+
+    return obj->getPlayerScore(id).mValue;
+}
+
+llong ScoreBoardEconomySystem::get(mce::UUID const& uuid) const {
+    auto player = ll::service::getLevel()->getPlayer(uuid);
+    if (!player) {
+        // land::PLand::getInstance().getSelf().getLogger().error(
+        //     "[ScoreBoardInterface] Offline operations on the scoreboard are not supported"
+        // );
+        return 0;
+    }
+    return get(*player);
+}
+
+bool ScoreBoardEconomySystem::set(Player& player, llong amount) const {
+    auto& cfg = getConfig();
+
+    Scoreboard& scoreboard = ll::service::getLevel()->getScoreboard();
+    Objective*  obj        = scoreboard.getObjective(cfg.economySystem.scoreboardName);
+    if (!obj) {
+        // land::PLand::getInstance().getSelf().getLogger().error(
+        //     "[ScoreBoardInterface] Could not find scoreboard: {}",
+        //     cfg.scoreboardName
+        // );
+        return false;
+    }
+    const ScoreboardId& id = scoreboard.getScoreboardId(player);
+    if (id.mRawID == ScoreboardId::INVALID().mRawID) {
+        scoreboard.createScoreboardId(player);
+    }
+    ScoreboardOperationResult result;
+    scoreboard.modifyPlayerScore(result, id, *obj, static_cast<int>(amount), PlayerScoreSetFunction::Set);
+    return result == ScoreboardOperationResult::Success;
+}
+
+bool ScoreBoardEconomySystem::set(mce::UUID const& uuid, llong amount) const {
+    auto player = ll::service::getLevel()->getPlayer(uuid);
+    if (!player) {
+        // land::PLand::getInstance().getSelf().getLogger().error(
+        //     "[ScoreBoardInterface] Offline operations on the scoreboard are not supported"
+        // );
+        return false;
+    }
+    return set(*player, amount);
+}
+
+bool ScoreBoardEconomySystem::add(Player& player, llong amount) const {
+    if (amount < 0) return false;
+    auto& cfg = getConfig();
+
+    Scoreboard& scoreboard = ll::service::getLevel()->getScoreboard();
+    Objective*  obj        = scoreboard.getObjective(cfg.economySystem.scoreboardName);
+    if (!obj) {
+        // land::PLand::getInstance().getSelf().getLogger().error(
+        //     "[ScoreBoardInterface] Could not find scoreboard: {}",
+        //     cfg.scoreboardName
+        // );
+        return false;
+    }
+    const ScoreboardId& id = scoreboard.getScoreboardId(player);
+    if (id.mRawID == ScoreboardId::INVALID().mRawID) {
+        scoreboard.createScoreboardId(player);
+    }
+    ScoreboardOperationResult result;
+    scoreboard.modifyPlayerScore(result, id, *obj, static_cast<int>(amount), PlayerScoreSetFunction::Add);
+    return result == ScoreboardOperationResult::Success;
+}
+
+bool ScoreBoardEconomySystem::add(mce::UUID const& uuid, llong amount) const {
+    if (amount < 0) return false;
+    auto player = ll::service::getLevel()->getPlayer(uuid);
+    if (!player) {
+        // land::PLand::getInstance().getSelf().getLogger().error(
+        //     "[ScoreBoardInterface] Offline operations on the scoreboard are not supported"
+        // );
+        return false;
+    }
+    return add(*player, amount);
+}
+
+bool ScoreBoardEconomySystem::reduce(Player& player, llong amount) const {
+    if (amount < 0) return false;
+    if (!has(player, amount)) return false;
+    auto& cfg = getConfig();
+
+    Scoreboard& scoreboard = ll::service::getLevel()->getScoreboard();
+    Objective*  obj        = scoreboard.getObjective(cfg.economySystem.scoreboardName);
+    if (!obj) {
+        // land::PLand::getInstance().getSelf().getLogger().error(
+        //     "[ScoreBoardInterface] Could not find scoreboard: {}",
+        //     cfg.scoreboardName
+        // );
+        return false;
+    }
+    const ScoreboardId& id = scoreboard.getScoreboardId(player);
+    if (id.mRawID == ScoreboardId::INVALID().mRawID) {
+        scoreboard.createScoreboardId(player);
+    }
+    ScoreboardOperationResult result;
+    scoreboard.modifyPlayerScore(result, id, *obj, static_cast<int>(amount), PlayerScoreSetFunction::Subtract);
+    return result == ScoreboardOperationResult::Success;
+}
+
+bool ScoreBoardEconomySystem::reduce(mce::UUID const& uuid, llong amount) const {
+    if (amount < 0) return false;
+    if (!has(uuid, amount)) return false;
+    auto player = ll::service::getLevel()->getPlayer(uuid);
+    if (!player) {
+        // land::PLand::getInstance().getSelf().getLogger().error(
+        //     "[ScoreBoardInterface] Offline operations on the scoreboard are not supported"
+        // );
+        return false;
+    }
+    return reduce(*player, amount);
+}
+
+bool ScoreBoardEconomySystem::transfer(Player& from, Player& to, llong amount) const {
+    if (!reduce(from, amount)) {
+        return false;
+    }
+    if (!add(to, amount)) {
+        (void)add(from, amount); // rollback
+        return false;
+    }
+    return true;
+}
+
+bool ScoreBoardEconomySystem::transfer(mce::UUID const& from, mce::UUID const& to, llong amount) const {
+    auto fromPlayer = ll::service::getLevel()->getPlayer(from);
+    auto toPlayer   = ll::service::getLevel()->getPlayer(to);
+
+    if (!fromPlayer || !toPlayer) {
+        // land::PLand::getInstance().getSelf().getLogger().error(
+        //     "[ScoreBoardInterface] Offline operations on the scoreboard are not supported"
+        // );
+        return false;
+    }
+    return transfer(*fromPlayer, *toPlayer, amount);
+}
+} // namespace internals
 
 namespace internals {
 EmptyEconomySystem::EmptyEconomySystem() = default;
