@@ -14,9 +14,9 @@ namespace ltps ::death {
 void DeathGUI::sendMainMenu(Player& player, BackCB backCb) {
     auto localeCode = player.getLocaleCode();
 
-    auto infos =
-        TeleportSystem::getInstance().getStorageManager().getStorage<DeathStorage>()->getDeathInfos(player.getRealName()
-        );
+    auto infos = TeleportSystem::getInstance().getStorageManager().getStorage<DeathStorage>()->getDeathInfos(
+        player.getRealName()
+    );
 
     if (!infos || infos->empty()) {
         mc_utils::sendText(player, "您还没有任何死亡信息"_trl(localeCode));
@@ -56,7 +56,9 @@ void DeathGUI::sendBackGUI(Player& player, int index, BackCB backCb) {
         .setContent("死亡时间: {0}\n死亡坐标: {1}"_trl(localeCode, info->time, info->toPosString()))
         .appendButton(
             "前往死亡点"_trl(localeCode),
-            [](Player& self) { ll::event::EventBus::getInstance().publish(PlayerRequestBackDeathPointEvent{self}); }
+            [index](Player& self) {
+                ll::event::EventBus::getInstance().publish(PlayerRequestBackDeathPointEvent{self, index});
+            }
         )
         .appendButton("取消"_trl(localeCode))
         .sendTo(player);
