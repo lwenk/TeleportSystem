@@ -96,14 +96,8 @@ bool TpaModule::enable() {
             auto price = static_cast<llong>(*clValue);
 
             auto economy = EconomySystemManager::getInstance().getEconomySystem();
-            if (!economy->has(sender, price)) {
-                economy->sendNotEnoughMoneyMessage(sender, price, localeCode);
-                ev.cancel();
-                return;
-            }
-
             if (!economy->reduce(sender, price)) {
-                mc_utils::sendText<mc_utils::Error>(sender, "扣除 TPA 费用失败，请联系管理员"_trl(localeCode));
+                economy->sendNotEnoughMoneyMessage(sender, price, localeCode);
                 ev.cancel();
             }
         },
