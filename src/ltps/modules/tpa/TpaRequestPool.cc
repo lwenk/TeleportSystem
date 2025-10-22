@@ -114,10 +114,14 @@ void TpaRequestPool::cleanupExpiredRequests() {
             auto senderPlayer   = request->getSender();
             auto receiverPlayer = request->getReceiver();
             switch (state) {
+            case TpaRequest::State::Available:
+                break;
             case TpaRequest::State::SenderOffline: {
                 if (receiverPlayer) {
                     mc_utils::sendText<mc_utils::Error>(*receiverPlayer, TpaRequest::getStateDescription(state));
                 }
+                senderIter = senderMap.erase(senderIter);
+                break;
             }
             case TpaRequest::State::ReceiverOffline: {
                 if (senderPlayer) {
@@ -135,6 +139,7 @@ void TpaRequestPool::cleanupExpiredRequests() {
                 break;
             }
             default:
+                senderIter = senderMap.erase(senderIter);
                 break;
             }
 

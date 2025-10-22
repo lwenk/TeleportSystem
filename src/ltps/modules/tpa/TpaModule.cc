@@ -215,7 +215,7 @@ bool TpaModule::enable() {
                     fm.appendButton(
                         "发起者: {0}"_trl(localeCode, info.has_value() ? info->name : sender.asString()),
                         [&pool, sender, isAccept](Player& self) {
-                            if (auto request = pool.getRequest(self.getUuid(), sender)) {
+                            if (auto request = pool.getRequest(sender, self.getUuid())) {
                                 isAccept ? request->accept() : request->deny();
                             }
                         }
