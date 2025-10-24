@@ -47,31 +47,40 @@ std::shared_ptr<TpaRequest> CreatedTpaRequestEvent::getRequest() const { return 
 
 
 // IAcceptOrDenyTpaRequestEvent
-IAcceptOrDenyTpaRequestEvent::IAcceptOrDenyTpaRequestEvent(TpaRequest& request) : mRequest(request) {}
+IOperationTpaRequestEvent::IOperationTpaRequestEvent(std::shared_ptr<TpaRequest> const& request) : mRequest(request) {}
 
-TpaRequest& IAcceptOrDenyTpaRequestEvent::getRequest() const { return mRequest; }
+std::shared_ptr<TpaRequest> const& IOperationTpaRequestEvent::getRequest() const { return mRequest; }
 
 // TpaRequestAcceptingEvent
-TpaRequestAcceptingEvent ::TpaRequestAcceptingEvent(TpaRequest& request) : IAcceptOrDenyTpaRequestEvent(request) {}
+TpaRequestAcceptingEvent ::TpaRequestAcceptingEvent(std::shared_ptr<TpaRequest> const& request)
+: IOperationTpaRequestEvent(request) {}
 
 // TpaRequestAcceptedEvent
-TpaRequestAcceptedEvent ::TpaRequestAcceptedEvent(TpaRequest& request) : IAcceptOrDenyTpaRequestEvent(request) {}
+TpaRequestAcceptedEvent ::TpaRequestAcceptedEvent(std::shared_ptr<TpaRequest> const& request)
+: IOperationTpaRequestEvent(request) {}
 
 // TpaRequestDenyingEvent
-TpaRequestDenyingEvent::TpaRequestDenyingEvent(TpaRequest& request) : IAcceptOrDenyTpaRequestEvent(request) {}
+TpaRequestDenyingEvent::TpaRequestDenyingEvent(std::shared_ptr<TpaRequest> const& request)
+: IOperationTpaRequestEvent(request) {}
 
 // TpaRequestDeniedEvent
-TpaRequestDeniedEvent ::TpaRequestDeniedEvent(TpaRequest& request) : IAcceptOrDenyTpaRequestEvent(request) {}
+TpaRequestDeniedEvent::TpaRequestDeniedEvent(std::shared_ptr<TpaRequest> const& request)
+: IOperationTpaRequestEvent(request) {}
 
+TpaRequestCancelledEvent::TpaRequestCancelledEvent(std::shared_ptr<TpaRequest> const& request)
+: IOperationTpaRequestEvent(request) {}
+
+TpaRequestExpiredEvent::TpaRequestExpiredEvent(std::shared_ptr<TpaRequest> const& request)
+: IOperationTpaRequestEvent(request) {}
 
 // PlayerExecuteTpaAcceptOrDenyCommandEvent
-PlayerExecuteTpaAcceptOrDenyCommandEvent::PlayerExecuteTpaAcceptOrDenyCommandEvent(Player& player, bool isAccept)
+PlayerExecuteTpaCommandEvent::PlayerExecuteTpaCommandEvent(Player& player, Action action)
 : mPlayer(player),
-  mIsAccept(isAccept) {}
+  mAction(action) {}
 
-Player& PlayerExecuteTpaAcceptOrDenyCommandEvent::getPlayer() const { return mPlayer; }
+Player& PlayerExecuteTpaCommandEvent::getPlayer() const { return mPlayer; }
 
-bool PlayerExecuteTpaAcceptOrDenyCommandEvent::isAccept() const { return mIsAccept; }
+PlayerExecuteTpaCommandEvent::Action PlayerExecuteTpaCommandEvent::getAction() const { return mAction; }
 
 
 IMPL_EVENT_EMITTER(CreateTpaRequestEvent);
@@ -81,6 +90,8 @@ IMPL_EVENT_EMITTER(TpaRequestAcceptingEvent);
 IMPL_EVENT_EMITTER(TpaRequestAcceptedEvent);
 IMPL_EVENT_EMITTER(TpaRequestDenyingEvent);
 IMPL_EVENT_EMITTER(TpaRequestDeniedEvent);
-IMPL_EVENT_EMITTER(PlayerExecuteTpaAcceptOrDenyCommandEvent);
+IMPL_EVENT_EMITTER(TpaRequestCancelledEvent);
+IMPL_EVENT_EMITTER(TpaRequestExpiredEvent);
+IMPL_EVENT_EMITTER(PlayerExecuteTpaCommandEvent);
 
 } // namespace ltps::tpa

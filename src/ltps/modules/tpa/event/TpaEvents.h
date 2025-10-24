@@ -4,6 +4,7 @@
 #include "ltps/Global.h"
 #include "ltps/modules/tpa/TpaRequest.h"
 #include <functional>
+#include <memory>
 
 
 class Player;
@@ -69,58 +70,72 @@ public:
 };
 
 
-class IAcceptOrDenyTpaRequestEvent {
+class IOperationTpaRequestEvent {
 protected:
-    TpaRequest& mRequest;
+    std::shared_ptr<TpaRequest> mRequest;
 
 public:
-    TPSAPI explicit IAcceptOrDenyTpaRequestEvent(TpaRequest& request);
+    TPSAPI explicit IOperationTpaRequestEvent(std::shared_ptr<TpaRequest> const& request);
 
-    TPSNDAPI TpaRequest& getRequest() const;
+    TPSNDAPI std::shared_ptr<TpaRequest> const& getRequest() const;
 };
 
 
 // Tpa 请求正在被接受
-class TpaRequestAcceptingEvent final : public IAcceptOrDenyTpaRequestEvent, public Cancellable<Event> {
+class TpaRequestAcceptingEvent final : public IOperationTpaRequestEvent, public Cancellable<Event> {
 public:
-    TPSAPI explicit TpaRequestAcceptingEvent(TpaRequest& request);
+    TPSAPI explicit TpaRequestAcceptingEvent(std::shared_ptr<TpaRequest> const& request);
 };
 
 // Tpa 请求已接受
-class TpaRequestAcceptedEvent final : public IAcceptOrDenyTpaRequestEvent, public Event {
+class TpaRequestAcceptedEvent final : public IOperationTpaRequestEvent, public Event {
 public:
-    TPSAPI explicit TpaRequestAcceptedEvent(TpaRequest& request);
+    TPSAPI explicit TpaRequestAcceptedEvent(std::shared_ptr<TpaRequest> const& request);
 };
 
 // Tpa 请求正在被拒绝
-class TpaRequestDenyingEvent final : public IAcceptOrDenyTpaRequestEvent, public Cancellable<Event> {
+class TpaRequestDenyingEvent final : public IOperationTpaRequestEvent, public Cancellable<Event> {
 public:
-    TPSAPI explicit TpaRequestDenyingEvent(TpaRequest& request);
+    TPSAPI explicit TpaRequestDenyingEvent(std::shared_ptr<TpaRequest> const& request);
 };
 
 // Tpa 请求已拒绝
-class TpaRequestDeniedEvent final : public IAcceptOrDenyTpaRequestEvent, public Event {
+class TpaRequestDeniedEvent final : public IOperationTpaRequestEvent, public Event {
 public:
-    TPSAPI explicit TpaRequestDeniedEvent(TpaRequest& request);
+    TPSAPI explicit TpaRequestDeniedEvent(std::shared_ptr<TpaRequest> const& request);
 };
 
+// Tpa 请求被取消
+class TpaRequestCancelledEvent final : public IOperationTpaRequestEvent, public Event {
+public:
+    TPSAPI explicit TpaRequestCancelledEvent(std::shared_ptr<TpaRequest> const& request);
+};
+
+// Tpa 请求超时
+class TpaRequestExpiredEvent final : public IOperationTpaRequestEvent, public Event {
+public:
+    TPSAPI explicit TpaRequestExpiredEvent(std::shared_ptr<TpaRequest> const& request);
+};
 
 /**
- * @brief 玩家执行 TPA 接受或拒绝命令事件
- * 流程: PlayerExecuteTpaAcceptOrDenyCommandEvent -> TpaRequest::accept/deny() ->
+ * @brief 玩家执行 TPA 命令事件
+ * 流程: PlayerExecuteTpaCommandEvent -> TpaRequest::accept/deny() ->
  * TpaRequestAcceptingEvent/TpaRequestDenyingEvent -> TpaRequestAcceptedEvent/TpaRequestDeniedEvent
  */
-class PlayerExecuteTpaAcceptOrDenyCommandEvent final : public Event {
+class PlayerExecuteTpaCommandEvent final : public Event {
+public:
+    enum class Action { Accept, Deny, Cancel };
+
+private:
     Player& mPlayer;
-    bool    mIsAccept; // true: accept, false: deny
+    Action  mAction;
 
 public:
-    TPSAPI explicit PlayerExecuteTpaAcceptOrDenyCommandEvent(Player& player, bool isAccept);
+    TPSAPI explicit PlayerExecuteTpaCommandEvent(Player& player, Action action);
 
     TPSNDAPI Player& getPlayer() const;
 
-    // true: accept, false: deny
-    TPSNDAPI bool isAccept() const;
+    TPSNDAPI Action getAction() const;
 };
 
 } // namespace ltps::tpa

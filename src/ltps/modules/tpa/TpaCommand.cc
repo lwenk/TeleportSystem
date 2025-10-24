@@ -17,7 +17,7 @@
 namespace ltps::tpa {
 
 struct IAcceptDenyParam {
-    enum Type { accept, deny };
+    using Type = PlayerExecuteTpaCommandEvent::Action;
     Type type;
 };
 
@@ -40,18 +40,15 @@ void TpaCommand::setup() {
         TpaGUI::sendMainMenu(player);
     });
 
-    // tpa <accept|deny>
+    // tpa <accept|deny|cancel>
     cmd.overload<IAcceptDenyParam>().required("type").execute(
         [](CommandOrigin const& origin, CommandOutput& output, IAcceptDenyParam const& param) {
             if (origin.getOriginType() != CommandOriginType::Player) {
                 mc_utils::sendText<mc_utils::Error>(output, "此命令只能由玩家执行"_tr());
                 return;
             }
-
             auto& receiver = *static_cast<Player*>(origin.getEntity());
-            ll::event::EventBus::getInstance().publish(
-                PlayerExecuteTpaAcceptOrDenyCommandEvent{receiver, param.type == IAcceptDenyParam::accept}
-            );
+            ll::event::EventBus::getInstance().publish(PlayerExecuteTpaCommandEvent{receiver, param.type});
         }
     );
 

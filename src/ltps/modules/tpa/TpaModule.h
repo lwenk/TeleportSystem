@@ -39,6 +39,11 @@ public:
 
     TPSNDAPI TpaRequestPool&       getRequestPool();
     TPSNDAPI TpaRequestPool const& getRequestPool() const;
+
+private:
+    void handlePlayerExecuteTpaCommand(class PlayerExecuteTpaCommandEvent& ev);
+    void handleAcceptOrDenyTpaRequest(Player& receiver, bool accept);
+    void handleCancelTpaRequest(Player& sender);
 };
 
 
