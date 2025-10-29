@@ -12,76 +12,113 @@
 #include "ltps/utils/McUtils.h"
 #include "ltps/utils/TimeUtils.h"
 #include "mc/deps/core/math/Vec2.h"
+#include "mc/deps/ecs/WeakEntityRef.h"
+#include "mc/platform/UUID.h"
 #include "mc/world/actor/player/Player.h"
 #include <chrono>
+#include <memory>
 
 
 namespace ltps::tpa {
 
-TpaRequest::TpaRequest(Player& sender, Player& receiver, Type type)
-: mSender(sender.getWeakEntity()),
-  mReceiver(receiver.getWeakEntity()),
-  mType(type),
-  mState(State::Available),
-  mCreationTime(time_utils::now()) {}
 
+struct TpaRequest::Impl {
+    WeakRef<EntityContext> mSender;
+    WeakRef<EntityContext> mReceiver;
+    mce::UUID              mSenderUUID;
+    mce::UUID              mReceiverUUID;
+    Type                   mType;
+    State                  mState;
+    SystemTime             mCreationTime;   // 请求创建时间
+    SteadyTime             mExpirationTime; // 请求失效时间
+
+    explicit Impl(Player& sender, Player& receiver, Type type)
+    : mSender(sender.getWeakEntity()),
+      mReceiver(receiver.getWeakEntity()),
+      mSenderUUID(sender.getUuid()),
+      mReceiverUUID(receiver.getUuid()),
+      mType(type),
+      mState(State::Available),
+      mCreationTime(time_utils::now()),
+      mExpirationTime(std::chrono::steady_clock::now() + std::chrono::seconds(getConfig().modules.tpa.expirationTime)) {
+    }
+};
+
+
+TpaRequest::TpaRequest(Player& sender, Player& receiver, Type type)
+: mImpl(std::make_unique<Impl>(sender, receiver, type)) {}
 TpaRequest::~TpaRequest() = default;
 
-Player* TpaRequest::getSender() const { return mSender.tryUnwrap<Player>().as_ptr(); }
-Player* TpaRequest::getReceiver() const { return mReceiver.tryUnwrap<Player>().as_ptr(); }
+Player*          TpaRequest::getSender() const { return mImpl->mSender.tryUnwrap<Player>().as_ptr(); }
+Player*          TpaRequest::getReceiver() const { return mImpl->mReceiver.tryUnwrap<Player>().as_ptr(); }
+mce::UUID const& TpaRequest::getSenderUUID() const { return mImpl->mSenderUUID; }
+mce::UUID const& TpaRequest::getReceiverUUID() const { return mImpl->mReceiverUUID; }
 
-TpaRequest::Type  TpaRequest::getType() const { return mType; }
-TpaRequest::State TpaRequest::getState() const { return mState; }
+TpaRequest::Type  TpaRequest::getType() const { return mImpl->mType; }
+TpaRequest::State TpaRequest::getState() const { return mImpl->mState; }
 
-TpaRequest::Time const& TpaRequest::getCreationTime() const { return mCreationTime; }
+TpaRequest::SystemTime const& TpaRequest::getCreationTime() const { return mImpl->mCreationTime; }
 
 std::chrono::seconds TpaRequest::getRemainingTime() const {
     auto now = std::chrono::system_clock::now();
     return std::chrono::duration_cast<std::chrono::seconds>(
-        mCreationTime + std::chrono::seconds(getConfig().modules.tpa.expirationTime) - now
+        mImpl->mCreationTime + std::chrono::seconds(getConfig().modules.tpa.expirationTime) - now
     );
 }
 
 std::string TpaRequest::getExpirationTime() const {
     // 获取过期时间点
-    auto expirationTime = mCreationTime + std::chrono::seconds(getConfig().modules.tpa.expirationTime);
+    auto expirationTime = mImpl->mCreationTime + std::chrono::seconds(getConfig().modules.tpa.expirationTime);
     return time_utils::timeToString(expirationTime);
 }
 
-void TpaRequest::setState(State state) { mState = state; }
+TpaRequest::SteadyTime const& TpaRequest::getExpireTime() const { return mImpl->mExpirationTime; }
 
-bool TpaRequest::isExpired() const {
-    auto now = std::chrono::system_clock::now();
-    return now >= (mCreationTime + std::chrono::seconds(getConfig().modules.tpa.expirationTime));
+bool TpaRequest::tryUpdateState(State state) {
+    if (mImpl->mState == State::Available || mImpl->mState == state) {
+        mImpl->mState = state; // 状态不可逆，只允许从Available状态转换
+        return true;
+    }
+    return false;
 }
 
-bool TpaRequest::isAvailable() const { return mState == State::Available; }
+bool TpaRequest::isExpired() const {
+    auto now = std::chrono::steady_clock::now();
+    return now >= mImpl->mExpirationTime;
+}
 
-void TpaRequest::forceUpdateState() {
-    if (mState != State::Available) {
-        return; // 请求有效，无需更新
-    }
+bool TpaRequest::isFinalState() const { return mImpl->mState != State::Available; }
 
-    if (auto sender = getSender(); !sender) {
-        setState(State::SenderOffline);
+bool TpaRequest::isAvailable() const { return mImpl->mState == State::Available; }
+
+bool TpaRequest::isSenderOnline() const { return mImpl->mSender.lock().has_value(); }
+
+bool TpaRequest::isReceiverOnline() const { return mImpl->mReceiver.lock().has_value(); }
+
+bool TpaRequest::isSenderAndReceiverOnline() const { return isSenderOnline() && isReceiverOnline(); }
+
+void TpaRequest::refreshAvailability() {
+    if (mImpl->mState != State::Available) {
+        return; // 请求已经被处理，不再更新状态
     }
-    if (auto receiver = getReceiver(); !receiver) {
-        setState(State::ReceiverOffline);
-    }
-    if (isExpired()) {
-        setState(State::Expired);
+    if (!isSenderOnline()) {
+        tryUpdateState(State::SenderOffline);
+    } else if (!isReceiverOnline()) {
+        tryUpdateState(State::ReceiverOffline);
+    } else if (isExpired()) {
+        tryUpdateState(State::Expired);
     }
 }
 
 void TpaRequest::accept() {
-    forceUpdateState();
+    refreshAvailability();
     if (!isAvailable()) {
         return;
     }
 
     auto& bus = ll::event::EventBus::getInstance();
 
-    TpaRequestAcceptingEvent event(*this);
+    TpaRequestAcceptingEvent event(shared_from_this());
     bus.publish(event);
     if (event.isCancelled()) {
         return;
@@ -91,7 +128,7 @@ void TpaRequest::accept() {
     auto sender   = getSender();
     auto receiver = getReceiver();
 
-    switch (mType) {
+    switch (mImpl->mType) {
     case Type::To: {
         sender->teleport(receiver->getPosition(), receiver->getDimensionId(), mc_utils::getRotation(*sender));
         break;
@@ -102,32 +139,46 @@ void TpaRequest::accept() {
     }
     }
 
-    setState(State::Accepted);
+    tryUpdateState(State::Accepted);
+    notifyAccepted();
 
-    bus.publish(TpaRequestAcceptedEvent(*this));
+    bus.publish(TpaRequestAcceptedEvent(shared_from_this()));
 }
 
 void TpaRequest::deny() {
-    forceUpdateState();
+    refreshAvailability();
     if (!isAvailable()) {
         return;
     }
 
     auto& bus = ll::event::EventBus::getInstance();
 
-    TpaRequestDenyingEvent event(*this);
+    TpaRequestDenyingEvent event(shared_from_this());
     bus.publish(event);
     if (event.isCancelled()) {
         return;
     }
 
-    setState(State::Denied);
+    tryUpdateState(State::Denied);
+    notifyDenied();
 
-    bus.publish(TpaRequestDeniedEvent(*this));
+    bus.publish(TpaRequestDeniedEvent(shared_from_this()));
+}
+
+void TpaRequest::cancel() {
+    refreshAvailability();
+    if (!isAvailable()) {
+        return;
+    }
+
+    tryUpdateState(State::Cancelled);
+    notifyCancelled();
+
+    ll::event::EventBus::getInstance().publish(TpaRequestCancelledEvent(shared_from_this()));
 }
 
 void TpaRequest::sendFormToReceiver() {
-    forceUpdateState();
+    refreshAvailability();
     if (!isAvailable()) {
         return;
     }
@@ -145,7 +196,7 @@ void TpaRequest::sendFormToReceiver() {
     ll::form::SimpleForm form;
     form.setTitle("Tpa Request"_trl(receiverLocaleCode));
 
-    std::string desc = mType == Type::To
+    std::string desc = mImpl->mType == Type::To
                          ? "'{0}' 希望传送到您当前位置"_trl(receiverLocaleCode, sender->getRealName())
                          : "'{0}' 希望将您传送到他(她)那里"_trl(receiverLocaleCode, sender->getRealName());
     form.setContent(desc);
@@ -162,6 +213,79 @@ void TpaRequest::sendFormToReceiver() {
     form.sendTo(*receiver);
 }
 
+void TpaRequest::notifyAccepted() const {
+    auto sender   = getSender();
+    auto receiver = getReceiver();
+    auto type     = getType();
+
+    if (!sender || !receiver) {
+        return;
+    }
+
+    mc_utils::sendText(
+        *sender,
+        "'{0}' 接受了您的 '{1}' 请求。"_trl(
+            sender->getLocaleCode(),
+            receiver->getRealName(),
+            TpaRequest::getTypeString(type)
+        )
+    );
+    mc_utils::sendText(
+        *receiver,
+        "您接受了来自 '{0}' 的 '{1}' 请求。"_trl(
+            receiver->getLocaleCode(),
+            sender->getRealName(),
+            TpaRequest::getTypeString(type)
+        )
+    );
+}
+
+void TpaRequest::notifyDenied() const {
+    auto sender   = getSender();
+    auto receiver = getReceiver();
+    auto type     = getType();
+
+    if (!sender || !receiver) {
+        return;
+    }
+
+    mc_utils::sendText<mc_utils::Error>(
+        *sender,
+        "'{0}' 拒绝了您的 '{1}' 请求。"_trl(
+            sender->getLocaleCode(),
+            receiver->getRealName(),
+            TpaRequest::getTypeString(type)
+        )
+    );
+    mc_utils::sendText<mc_utils::Warn>(
+        *receiver,
+        "您拒绝了来自 '{0}' 的 '{1}' 请求。"_trl(
+            receiver->getLocaleCode(),
+            sender->getRealName(),
+            TpaRequest::getTypeString(type)
+        )
+    );
+}
+
+void TpaRequest::notifyCancelled() const {
+    _notifyState(getReceiver());
+    _notifyState(getSender());
+}
+
+void TpaRequest::notifyExpired() const {
+    _notifyState(getReceiver());
+    _notifyState(getSender());
+}
+
+void TpaRequest::notifySenderOffline() const { _notifyState(getReceiver()); }
+
+void TpaRequest::notifyReceiverOffline() const { _notifyState(getSender()); }
+
+void TpaRequest::_notifyState(Player* player) const {
+    if (player) {
+        mc_utils::sendText<mc_utils::Error>(*player, getStateDescription(mImpl->mState, player->getLocaleCode()));
+    }
+}
 
 std::string TpaRequest::getStateDescription(State state, std::string const& localeCode) {
     switch (state) {
@@ -177,8 +301,11 @@ std::string TpaRequest::getStateDescription(State state, std::string const& loca
         return "发起者离线"_trl(localeCode);
     case State::ReceiverOffline:
         return "接收者离线"_trl(localeCode);
+    case State::Cancelled:
+        return "请求已取消"_trl(localeCode);
+    default:
+        return "未知状态"_trl(localeCode);
     }
-    return "未知状态"_trl(localeCode);
 }
 std::string TpaRequest::getTypeString(Type type) {
     switch (type) {
