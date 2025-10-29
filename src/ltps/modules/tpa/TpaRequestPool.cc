@@ -236,62 +236,10 @@ std::vector<std::shared_ptr<TpaRequest>> TpaRequestPool::getInitiatedRequest(mce
         return {};
     }
 
-<<<<<<< HEAD
-    for (auto receiverIter = mPool.begin(); receiverIter != mPool.end();) {
-        auto& [receiver, senderMap] = *receiverIter;
-        if (senderMap.empty()) {
-            receiverIter = mPool.erase(receiverIter);
-            continue;
-        }
-
-        for (auto senderIter = senderMap.begin(); senderIter != senderMap.end();) {
-            auto& [sender, request] = *senderIter;
-
-            request->forceUpdateState();
-
-            auto state          = request->getState();
-            auto senderPlayer   = request->getSender();
-            auto receiverPlayer = request->getReceiver();
-            switch (state) {
-            case TpaRequest::State::Available:
-                break;
-            case TpaRequest::State::SenderOffline: {
-                if (receiverPlayer) {
-                    mc_utils::sendText<mc_utils::Error>(*receiverPlayer, TpaRequest::getStateDescription(state));
-                }
-                senderIter = senderMap.erase(senderIter);
-                break;
-            }
-            case TpaRequest::State::ReceiverOffline: {
-                if (senderPlayer) {
-                    mc_utils::sendText<mc_utils::Error>(*senderPlayer, TpaRequest::getStateDescription(state));
-                }
-                senderIter = senderMap.erase(senderIter);
-                break;
-            }
-            case TpaRequest::State::Expired: {
-                if (senderPlayer && receiverPlayer) {
-                    mc_utils::sendText<mc_utils::Error>(*senderPlayer, TpaRequest::getStateDescription(state));
-                    mc_utils::sendText<mc_utils::Error>(*receiverPlayer, TpaRequest::getStateDescription(state));
-                }
-                senderIter = senderMap.erase(senderIter);
-                break;
-            }
-            default:
-                senderIter = senderMap.erase(senderIter);
-                break;
-            }
-
-            ++senderIter;
-        }
-
-        ++receiverIter;
-=======
     std::vector<std::shared_ptr<TpaRequest>> requests;
     requests.reserve(iter->second.size());
     for (auto& [receiver, req] : iter->second) {
         requests.push_back(req);
->>>>>>> cae113edeba64a24ae134e82eca4781587ac982b
     }
     return requests;
 }

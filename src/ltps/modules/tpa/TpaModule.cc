@@ -128,96 +128,12 @@ bool TpaModule::enable() {
         ll::event::EventPriority::High
     ));
 
-<<<<<<< HEAD
-    mListeners.emplace_back(bus.emplaceListener<TpaRequestDeniedEvent>(
-        [](TpaRequestDeniedEvent& ev) {
-            auto sender   = ev.getRequest().getSender();
-            auto receiver = ev.getRequest().getReceiver();
-            auto type     = ev.getRequest().getType();
-
-            mc_utils::sendText<mc_utils::Error>(
-                *sender,
-                "'{0}' 拒绝了您的 '{1}' 请求。"_trl(
-                    sender->getLocaleCode(),
-                    receiver->getRealName(),
-                    TpaRequest::getTypeString(type)
-                )
-            );
-            mc_utils::sendText<mc_utils::Warn>(
-                *receiver,
-                "您拒绝了来自 '{0}' 的 '{1}' 请求。"_trl(
-                    receiver->getLocaleCode(),
-                    sender->getRealName(),
-                    TpaRequest::getTypeString(type)
-                )
-            );
-        },
-        ll::event::EventPriority::High
-    ));
-
-    mListeners.emplace_back(bus.emplaceListener<PlayerExecuteTpaAcceptOrDenyCommandEvent>(
-        [this](PlayerExecuteTpaAcceptOrDenyCommandEvent& ev) {
-            bool const isAccept   = ev.isAccept();
-            auto&      receiver   = ev.getPlayer();
-            auto const localeCode = receiver.getLocaleCode();
-
-            if (receiver.isSleeping()) {
-                mc_utils::sendText<mc_utils::Error>(receiver, "你不能在睡觉时使用此命令"_trl(localeCode));
-                return;
-            }
-
-            auto& pool    = this->getRequestPool();
-            auto  senders = pool.getSenders(receiver.getUuid());
-
-            switch (senders.size()) {
-            case 0:
-                mc_utils::sendText<mc_utils::Error>(receiver, "您没有收到任何 TPA 请求"_trl(localeCode));
-                return;
-            case 1: {
-                auto request = pool.getRequest(senders[0], receiver.getUuid());
-                if (request) {
-                    isAccept ? request->accept() : request->deny();
-                } else {
-                    mc_utils::sendText<mc_utils::Error>(receiver, "TPA 请求不存在"_trl(localeCode));
-                    TeleportSystem::getInstance().getSelf().getLogger().error("An unexpected request is null pointer.");
-                }
-                return;
-            }
-            default: {
-                auto& infoDb = ll::service::PlayerInfo::getInstance();
-
-                ll::form::SimpleForm fm;
-                fm.setTitle("Tpa 请求列表 [{}]"_trl(localeCode, senders.size()));
-                fm.setContent("选择一个要 接受/拒绝 的 TPA 请求"_trl(localeCode));
-
-                for (auto& sender : senders) {
-                    auto info = infoDb.fromUuid(sender);
-                    fm.appendButton(
-                        "发起者: {0}"_trl(localeCode, info.has_value() ? info->name : sender.asString()),
-                        [&pool, sender, isAccept](Player& self) {
-                            if (auto request = pool.getRequest(sender, self.getUuid())) {
-                                isAccept ? request->accept() : request->deny();
-                            }
-                        }
-                    );
-                }
-
-                fm.sendTo(receiver);
-
-                return;
-            }
-            }
-        },
-        ll::event::EventPriority::High
-    ));
-=======
     mListeners.emplace_back(bus.emplaceListener<TpaRequestExpiredEvent>([](TpaRequestExpiredEvent& ev) {
         auto& req = ev.getRequest();
         if (req->isSenderAndReceiverOnline()) {
             req->notifyExpired(); // 通知双方请求已过期
         }
     }));
->>>>>>> cae113edeba64a24ae134e82eca4781587ac982b
 
     TpaCommand::setup();
 
